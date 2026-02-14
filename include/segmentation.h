@@ -8,7 +8,7 @@
 
 struct Edge {
     int u, v;
-    float w;
+    int w;
 
     bool operator<(const Edge& other) const {
         return w < other.w;
