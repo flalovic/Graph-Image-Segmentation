@@ -39,7 +39,7 @@ Segmentation::Segmentation(const Image &img_) : img(img_) {}
 
 /* ---------- BLUR ---------- */
 
-Image Segmentation::blur(const Image& src) {
+Image Segmentation::box(const Image& src) {
     Image dst = src;
 
     int dx[9] = {-1,0,1,-1,0,1,-1,0,1};
@@ -65,6 +65,45 @@ Image Segmentation::blur(const Image& src) {
     return dst;
 }
 
+Image Segmentation::gauss(const Image& src) {
+    Image dst = src;
+
+    const int kernel[3][3] = {
+        {1, 2, 1},
+        {2, 4, 2},
+        {1, 2, 1}
+    };
+
+    const int sum = 16;
+
+    for (int y = 1; y < src.h - 1; y++) {
+        for (int x = 1; x < src.w - 1; x++) {
+
+            int r = 0, g = 0, b = 0;
+
+            for (int ky = -1; ky <= 1; ky++) {
+                for (int kx = -1; kx <= 1; kx++) {
+                    Pixel p = src[y + ky][x + kx];
+                    int w = kernel[ky + 1][kx + 1];
+
+                    r += p.r * w;
+                    g += p.g * w;
+                    b += p.b * w;
+                }
+            }
+
+            dst[y][x] = {
+                static_cast<unsigned char>(r / sum),
+                static_cast<unsigned char>(g / sum),
+                static_cast<unsigned char>(b / sum),
+                255
+            };
+        }
+    }
+
+    return dst;
+}
+
 /* ---------- FELZENSZWALB ---------- */
 
 vector<int> Segmentation::felzenszwalb(float k) {
@@ -72,7 +111,7 @@ vector<int> Segmentation::felzenszwalb(float k) {
     int w = img.w, h = img.h;
     int n = w * h;
 
-    Image blurred = blur(img);
+    Image blurred = box(img);
 
     vector<Edge> edges;
 
@@ -128,11 +167,11 @@ vector<int> Segmentation::felzenszwalb(float k) {
     return label;
 }
 
-vector<int> Segmentation::backgroundExtraction() {
+vector<int> Segmentation::backgroundExtraction(float k, int tolerance, int minRegionSize) {
     int w = img.w, h = img.h;
     int n = w * h;
 
-    vector<int> label = felzenszwalb(120000);
+    vector<int> label = felzenszwalb(k);
 
     int dx[4] = {1, 0,-1, 0};
     int dy[4] = {0, 1, 0,-1};
@@ -187,14 +226,12 @@ vector<int> Segmentation::backgroundExtraction() {
     background.insert(mainBG);
     q.push(mainBG);
 
-    const int TOL = 900;
-
     while(!q.empty()){
         int comp1 = q.front(); q.pop();
         for(int comp2 : info[comp1].nb){
             if(background.count(comp2)) continue;
 
-            if(diff(info[comp1].p, info[comp2].p) < TOL){
+            if(diff(info[comp1].p, info[comp2].p) < tolerance){
                 background.insert(comp2);
                 q.push(comp2);
             }
@@ -205,6 +242,41 @@ vector<int> Segmentation::backgroundExtraction() {
     for(int i=0; i < n; i++)
         if(!background.count(label[i]))
             mask[i] = 1;
+
+    vector<int> visited(n, 0);
+    int dx8[4] = {1, 0, -1, 0};
+    int dy8[4] = {0, 1, 0, -1};
+
+    for (int i = 0; i < n; i++) {
+        if (mask[i] == 0 || visited[i]) continue;
+
+        vector<int> component;
+        queue<int> q2;
+        q2.push(i);
+        visited[i] = 1;
+
+        while (!q2.empty()) {
+            int cur = q2.front();
+            q2.pop();
+            component.push_back(cur);
+
+            int y = cur / w;
+            int x = cur % w;
+            for (int k = 0; k < 4; k++) {
+                int nx = x + dx8[k], ny = y + dy8[k];
+                if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+                int nxt = ny * w + nx;
+                if (mask[nxt] == 1 && !visited[nxt]) {
+                    visited[nxt] = 1;
+                    q2.push(nxt);
+                }
+            }
+        }
+
+        if ((int)component.size() < minRegionSize) {
+            for (int idx : component) mask[idx] = 0;
+        }
+    }
 
     return mask;
 }
@@ -274,3 +346,17 @@ Image Segmentation::visualizeBinary(const vector<int>& label) {
     return out;
 }
 
+Image Segmentation::visualizeForegroundOnBlack(const vector<int>& mask) {
+    Image out(img.w, img.h);
+
+    for (int y = 0; y < img.h; y++)
+    for (int x = 0; x < img.w; x++) {
+        if (mask[y * img.w + x]) {
+            out[y][x] = img[y][x];
+        } else {
+            out[y][x] = {0, 0, 0, 255};
+        }
+    }
+
+    return out;
+}

@@ -31,16 +31,17 @@ public:
     Segmentation(const Image&);
 
     std::vector<int> felzenszwalb(float k = 120000);
-    std::vector<int> backgroundExtraction();
+    std::vector<int> backgroundExtraction(float k = 120000, int tolerance = 900, int minRegionSize = 300);
 
     // visualizations
     Image visualize(const std::vector<int>& label);
     Image visualizeBlend(const std::vector<int>& label, float alpha = 0.7f);
     Image visualizeBinary(const std::vector<int>& label);
+    Image visualizeForegroundOnBlack(const std::vector<int>& mask);
 
 private:
-    Image blur(const Image&);
+    Image box(const Image&);
+    Image gauss(const Image&);
 };
 
 #endif
-

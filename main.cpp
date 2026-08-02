@@ -1,35 +1,92 @@
 #include "segmentation.h"
 #include <iostream>
+#include <filesystem>
+#include <string>
+#include <vector>
+
 using namespace std;
+namespace fs = filesystem;
 
 int main() {
-
     srand(time(nullptr));
 
-    const string inputPath = "images/image.png";
-    Image img(inputPath);
+    // Parametri za varijaciju
+    const vector<float> K_VALUES = {30000, 100000, 200000};
+    const vector<int> TOL_VALUES = {500, 900, 1200};
 
-    if (img.w == 0 || img.h == 0) {
-        cerr << "Can not open image: " << inputPath << endl;
-        return 1;
+    string imagesDir = "images";
+    string resultsBaseDir = "results";
+
+    // Kreiraj results folder ako ne postoji
+    if (!fs::exists(resultsBaseDir)) {
+        fs::create_directory(resultsBaseDir);
     }
 
-    Segmentation seg(img);
+    // Prođi kroz sve slike u images folderu
+    for (const auto& entry : fs::directory_iterator(imagesDir)) {
+        if (entry.is_regular_file()) {
+            string imagePath = entry.path().string();
+            string imageName = entry.path().stem().string();
+            
+            // Preskoči ako nije slika
+            string ext = entry.path().extension().string();
+            if (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".bmp") {
+                continue;
+            }
 
-    cout << "Running Felzenszwalb..." << endl;
-    auto segments = seg.felzenszwalb(120000);
+            cout << "\n========================================" << endl;
+            cout << "Processing image: " << imageName << endl;
+            cout << "========================================" << endl;
 
-    seg.visualize(segments).saveImage("results/random.png");
-    seg.visualizeBlend(segments, 0.7f).saveImage("results/blend.png");
+            Image img(imagePath);
 
+            if (img.w == 0 || img.h == 0) {
+                cerr << "Error: Cannot open image: " << imagePath << endl;
+                continue;
+            }
 
-    cout << "Classifying foreground..." << endl;
-    auto mask = seg.backgroundExtraction();
+            Segmentation seg(img);
 
-    seg.visualizeBinary(mask).saveImage("results/mask.png");
+            // Za svaku kombinaciju k i TOL
+            for (float k : K_VALUES) {
+                for (int tol : TOL_VALUES) {
+                    string folderName = imageName + "_k" + to_string((int)k) + "_tol" + to_string(tol);
+                    string outputDir = resultsBaseDir + "/" + folderName;
 
-    cout << "Done! Results saved in results/ folder." << endl;
+                    // Kreiraj folder
+                    if (!fs::exists(outputDir)) {
+                        fs::create_directories(outputDir);
+                    }
+
+                    cout << "  k=" << (int)k << ", tol=" << tol << "... ";
+
+                    // Segmentation
+                    auto segments = seg.felzenszwalb(k);
+
+                    // Sačuvaj vizuelizacije
+                    seg.visualize(segments).saveImage(outputDir + "/random.png");
+                    seg.visualizeBlend(segments, 0.7f).saveImage(outputDir + "/blend.png");
+
+                    // Background extraction sa istim k i razlicitim TOL
+                    auto mask = seg.backgroundExtraction(k, tol);
+                    seg.visualizeBinary(mask).saveImage(outputDir + "/mask.png");
+                    seg.visualizeForegroundOnBlack(mask).saveImage(outputDir + "/foreground.png");
+
+                    cout << "Done" << endl;
+                }
+            }
+        }
+    }
+
+    cout << "\n========================================" << endl;
+    cout << "All processing completed!" << endl;
+    cout << "========================================" << endl;
+    cout << "\nGenerated combinations:" << endl;
+    for (float k : K_VALUES) {
+        for (int tol : TOL_VALUES) {
+            cout << "  k=" << (int)k << ", tol=" << tol << endl;
+        }
+    }
 
     return 0;
 }
-

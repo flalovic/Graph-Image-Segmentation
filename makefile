@@ -12,14 +12,12 @@ all: $(OUT)
 $(OUT): $(SRC)
 	$(CXX) $(SRC) $(CXXFLAGS) -o $(OUT)
 
-
 run: $(OUT)
 	./$(OUT)
 
-
 clean:
 	rm -f $(OUT)
-	rm -f results/*.png
+	rm -rf results/*
 
 .PHONY: all run clean
 
